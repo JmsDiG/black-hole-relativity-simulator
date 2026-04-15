@@ -19,8 +19,10 @@
 import { useFrame } from '@react-three/fiber'
 import { useMemo, useRef } from 'react'
 import {
+  BackSide,
   BufferAttribute,
   BufferGeometry,
+  Group,
   Matrix4,
   NormalBlending,
   Points,
@@ -34,6 +36,8 @@ import {
 import {
   luminetQuadFragmentShader,
   luminetQuadVertexShader,
+  nebulaFragmentShader,
+  nebulaVertexShader,
   starDotFragmentShader,
   starDotVertexShader,
 } from '../core/rendering/luminetShaders'
@@ -74,6 +78,40 @@ const tmpCam = new Vector3()
 const tmpLensed = new Vector3()
 const tmpInvVP = new Matrix4()
 const tmpVP = new Matrix4()
+
+/**
+ * <NebulaShell /> — large back-side sphere with a procedural noise shader
+ * that paints very faint colour clouds on the sky. Renders behind the
+ * star points and the BH quad. Pinned to the camera so it never moves.
+ */
+function NebulaShell() {
+  const groupRef = useRef<Group>(null)
+  const material = useMemo(
+    () =>
+      new ShaderMaterial({
+        vertexShader: nebulaVertexShader,
+        fragmentShader: nebulaFragmentShader,
+        side: BackSide,
+        depthWrite: false,
+        depthTest: false,
+      }),
+    [],
+  )
+
+  useFrame(({ camera }) => {
+    if (groupRef.current) {
+      groupRef.current.position.copy(camera.position)
+    }
+  })
+
+  return (
+    <group ref={groupRef} renderOrder={-10}>
+      <mesh material={material}>
+        <sphereGeometry args={[STAR_DISTANCE * 1.4, 32, 24]} />
+      </mesh>
+    </group>
+  )
+}
 
 /**
  * <LensedStars /> — renders the star catalog as small round dots whose
@@ -246,9 +284,10 @@ export function LuminetLocalView() {
   const visual = useLuminetVisualParams()
   return (
     <>
-      {/* Pure black background — no gradient, no nebula. */}
+      {/* Base background is black; the NebulaShell lifts it subtly. */}
       <color args={['#000000']} attach="background" />
       <LocalCameraRig visual={visual} />
+      <NebulaShell />
       <LensedStars />
       <BlackHoleQuad visual={visual} />
     </>
