@@ -10,12 +10,23 @@ export const SOLAR_SCHWARZSCHILD_RADIUS_KM = 2.95325008
 export const SOLAR_SCHWARZSCHILD_LIGHT_CROSSING_SECONDS = 9.8509819e-6
 
 export const DEFAULT_MASS_SOLAR = 8
-export const DEFAULT_SIMULATION_SPEED = 18000
+// Default simulation speed reduced from 18000 → 100. Combined with the
+// reduced default tangential velocity below this gives one camera orbit
+// in roughly 12–15 seconds of real time at the default observer radius
+// (≈ 8 Rs). The UI slider range is unchanged — only the starting value
+// moves, so users can still crank speed back up via the Control Panel.
+export const DEFAULT_SIMULATION_SPEED = 100
 
 export const DEFAULT_OBSERVER = {
-  radiusRs: 8,
+  // Default distance bumped from 8 → 22 Rs so the initial Luminet view
+  // is a calm "overview" shot with the BH clearly framed, instead of the
+  // previous close-in setup. The radius slider range is unchanged.
+  radiusRs: 22,
   radialVelocity: 0,
-  tangentialVelocity: 0.24,
+  // Reduced from 0.24 → 0.04 c to slow the visible orbital motion of
+  // the Local Observer camera. Same UI slider, just a calmer initial
+  // value.
+  tangentialVelocity: 0.04,
   phase: 0.4,
   yaw: 0,
   pitch: -0.04,
