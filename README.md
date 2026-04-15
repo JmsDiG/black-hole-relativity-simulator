@@ -159,7 +159,3 @@ Reasonable next steps for the project:
 1. Add a higher-accuracy mode with numerical ray or geodesic integration.
 2. Improve the accretion disk model beyond the current qualitative shader approach.
 3. Extend comparison tools with richer saved scenarios and better observer-to-observer analysis.
-
-## License
-
-No license has been added yet. If you plan to keep the repository public, add one before inviting reuse.
