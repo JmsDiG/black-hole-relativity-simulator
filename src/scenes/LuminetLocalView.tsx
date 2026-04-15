@@ -42,11 +42,32 @@ import {
   lensStarDirection,
 } from '../core/rendering/luminetStars'
 import { useSimulationStore } from '../state/simulationStore'
+import { OBSERVED_BLACK_HOLES } from '../ui/observedBlackHoles'
 
 const STAR_COUNT = 2500
 const STAR_DISTANCE = 180 // stars placed at this distance for the 3D scene
-const DISK_OUTER_RS = 10
 const M_IN_SCENE_UNITS = EVENT_HORIZON_RS / 2 // M = Rs/2 (Rs=1 → M=0.5)
+
+// Defaults used when no observed-BH preset is selected ("custom" mode).
+const DEFAULT_DISK_OUTER_RS = 10
+const DEFAULT_DISK_BRIGHTNESS = 1.0
+const DEFAULT_INCLINATION_DEG = 88 // near edge-on, like Luminet 1979
+
+interface LuminetVisualParams {
+  inclinationDeg: number
+  diskOuterRs: number
+  diskBrightness: number
+}
+
+function useLuminetVisualParams(): LuminetVisualParams {
+  const observedModelId = useSimulationStore((s) => s.observedModelId)
+  const model = OBSERVED_BLACK_HOLES.find((m) => m.id === observedModelId)
+  return {
+    inclinationDeg: model?.inclinationDeg ?? DEFAULT_INCLINATION_DEG,
+    diskOuterRs: model?.diskOuterRs ?? DEFAULT_DISK_OUTER_RS,
+    diskBrightness: model?.diskBrightness ?? DEFAULT_DISK_BRIGHTNESS,
+  }
+}
 
 // --- scratch vectors (avoid per-frame allocation) ---
 const tmpCam = new Vector3()
@@ -113,7 +134,7 @@ function LensedStars() {
 /**
  * <BlackHoleQuad /> — full-screen NDC quad with the minimalist BH shader.
  */
-function BlackHoleQuad() {
+function BlackHoleQuad({ visual }: { visual: LuminetVisualParams }) {
   const matRef = useRef<ShaderMaterial>(null)
 
   const uniforms = useMemo(
@@ -122,10 +143,12 @@ function BlackHoleQuad() {
       uCamPos: { value: new Vector3() },
       uMass: { value: M_IN_SCENE_UNITS },
       uDiskInner: { value: ISCO_RS },
-      uDiskOuter: { value: DISK_OUTER_RS },
+      uDiskOuter: { value: visual.diskOuterRs },
       uTime: { value: 0 },
-      uDopplerGain: { value: 0.7 },
+      uDopplerGain: { value: 0.85 },
+      uDiskBrightness: { value: visual.diskBrightness },
     }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   )
 
@@ -137,7 +160,9 @@ function BlackHoleQuad() {
     m.uniforms.uInvViewProj.value.copy(tmpInvVP)
     m.uniforms.uCamPos.value.copy(camera.position)
     m.uniforms.uTime.value = clock.elapsedTime
-    // keep delta referenced so linting doesn't complain
+    // live-update visual params so preset switches re-render immediately
+    m.uniforms.uDiskOuter.value = visual.diskOuterRs
+    m.uniforms.uDiskBrightness.value = visual.diskBrightness
     void delta
   })
 
@@ -170,7 +195,7 @@ const forwardVector = new Vector3()
 const rightVector = new Vector3()
 const targetVector = new Vector3()
 
-function LocalCameraRig() {
+function LocalCameraRig({ visual }: { visual: LuminetVisualParams }) {
   const tick = useSimulationStore((s) => s.tick)
   const cinematicMode = useSimulationStore((s) => s.cinematicMode)
   const observer = useSimulationStore((s) => s.observer)
@@ -183,16 +208,24 @@ function LocalCameraRig() {
     const cinematicLift = cinematicMode ? Math.sin(clock.elapsedTime * 0.24) * 0.06 : 0
     const phase = observer.phase
 
+    // Inclination from selected real-BH preset:
+    //   90° = edge-on (in disk plane), 0° = face-on (above pole).
+    // For "custom" / no preset we use DEFAULT_INCLINATION_DEG (≈ edge-on).
+    const incRad = (visual.inclinationDeg * Math.PI) / 180
+    const horizDist = observer.radiusRs * Math.sin(incRad)
+    const liftY = observer.radiusRs * Math.cos(incRad)
+
     radialVector.set(Math.cos(phase), 0, Math.sin(phase))
     tangentialVector.set(-Math.sin(phase), 0, Math.cos(phase))
 
     camera.position.set(
-      radialVector.x * observer.radiusRs,
-      0.06 + cinematicLift,
-      radialVector.z * observer.radiusRs,
+      radialVector.x * horizDist,
+      liftY + cinematicLift,
+      radialVector.z * horizDist,
     )
 
-    forwardVector.copy(radialVector).multiplyScalar(-1).normalize()
+    // Look back toward the BH at the origin (with yaw/pitch slider offsets).
+    forwardVector.copy(camera.position).multiplyScalar(-1).normalize()
     forwardVector.applyAxisAngle(upVector, observer.yaw + cinematicYaw)
     rightVector.crossVectors(forwardVector, upVector).normalize()
     forwardVector.applyAxisAngle(rightVector, observer.pitch)
@@ -210,13 +243,14 @@ function LocalCameraRig() {
 }
 
 export function LuminetLocalView() {
+  const visual = useLuminetVisualParams()
   return (
     <>
       {/* Pure black background — no gradient, no nebula. */}
       <color args={['#000000']} attach="background" />
-      <LocalCameraRig />
+      <LocalCameraRig visual={visual} />
       <LensedStars />
-      <BlackHoleQuad />
+      <BlackHoleQuad visual={visual} />
     </>
   )
 }

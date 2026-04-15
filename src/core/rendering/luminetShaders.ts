@@ -70,11 +70,12 @@ export const luminetQuadFragmentShader = /* glsl */ `
 
   uniform mat4  uInvViewProj;
   uniform vec3  uCamPos;
-  uniform float uMass;        // M in scene units (Rs/2)
-  uniform float uDiskInner;   // r_in in scene units (Rs)
-  uniform float uDiskOuter;   // r_out in scene units (Rs)
+  uniform float uMass;            // M in scene units (Rs/2)
+  uniform float uDiskInner;       // r_in in scene units (Rs)
+  uniform float uDiskOuter;       // r_out in scene units (Rs)
   uniform float uTime;
-  uniform float uDopplerGain; // 0..1 how strong Doppler asymmetry shows
+  uniform float uDopplerGain;     // 0..1 how strong Doppler asymmetry shows
+  uniform float uDiskBrightness;  // overall disk emissivity multiplier (0.2..2.0)
 
   const float PI    = 3.14159265359;
   const float SQRT3 = 1.73205080757;
@@ -169,55 +170,72 @@ export const luminetQuadFragmentShader = /* glsl */ `
           vec3  Ph = (ch * e1 + sh * e2) * rHitM;
           float diskPhi = atan(Ph.z, Ph.x);
 
-          // ---- Isoradial contour lines ----
-          // Spacing in r_Rs: every 1.0 Rs a bright contour line.
-          float spacing = 1.0;
-          float phase   = rHitRs / spacing;
-          float offset  = abs(fract(phase) - 0.5);
-          float line    = smoothstep(0.10, 0.015, offset);
+          // ---- Isoradial contour lines + soft halo (gaussian-like glow)
+          // Sharp core (~1 px equivalent) + soft outer wash that simulates
+          // gentle scattering of light off the disk surface. Together they
+          // give the disk a subtle bloom WITHOUT any heavy post-process.
+          float spacing  = 0.85;                       // ring spacing in Rs
+          float phase    = rHitRs / spacing;
+          float offset   = abs(fract(phase) - 0.5);
+          float lineCore = smoothstep(0.07, 0.005, offset);
+          float lineHalo = smoothstep(0.30, 0.06,  offset) * 0.45;
+          float line     = lineCore + lineHalo;
 
-          // A very faint fill between the lines so the rings look like
-          // they live on a disk (not floating isolated arcs).
-          float fill = 0.06;
+          // Faint disk-surface fill so rings clearly read as a disk, not
+          // floating arcs. Decays with r so outer edges are subtler.
+          float radialFalloff = 1.0 - smoothstep(uDiskInner, uDiskOuter, rHitRs);
+          float fill = 0.16 * radialFalloff;
 
-          // ---- Doppler asymmetry (gentle, no colour shift) ----
+          // ---- Relativistic g-factor (Doppler + gravitational redshift)
           float Omega   = pow(rHitM, -1.5);               // Keplerian
           vec3  vDisk   = vec3(-sin(diskPhi), 0.0, cos(diskPhi)) * (Omega * rHitM);
           vec3  photonT = normalize(-sh * e1 + ch * e2);
           float vMag    = length(vDisk);
           float vDotN   = dot(vDisk, photonT);
           float gamma   = 1.0 / sqrt(max(1e-4, 1.0 - vMag * vMag));
-          float doppler = 1.0 / (gamma * (1.0 - vDotN));
+          float doppler = 1.0 / (gamma * (1.0 - vDotN));   // >1 approach
           float grav    = sqrt(max(0.0, 1.0 - 2.0 / rHitM));
-          float g       = doppler * grav;
+          float g       = doppler * grav;                  // composite
 
-          // Overall emissivity fall-off (Page–Thorne style, gentle).
-          float emis = (1.0 - sqrt(uDiskInner / max(rHitRs, uDiskInner))) /
-                       (rHitRs * rHitRs);
-          emis = max(emis, 0.0);
+          // ---- Page–Thorne style emissivity profile, normalised so the
+          // peak is O(1) (independent of overall flux level — that's
+          // controlled by uDiskBrightness).
+          float emisRaw = (1.0 - sqrt(uDiskInner / max(rHitRs, uDiskInner))) *
+                          pow(uDiskInner / rHitRs, 2.0);
+          // peak of the profile lives at r ≈ 9/4 · r_in; rescale to ~1 there
+          float emis = max(0.0, emisRaw) * 4.5;
 
-          // Brightness: slight asymmetric Doppler, kept mild so it's a
-          // deliberate "the approaching side is a touch brighter" cue
-          // and not a dramatic colour splash.
-          float brightness = mix(1.0, clamp(g, 0.55, 1.8), uDopplerGain);
+          // Brightness: physical Doppler boost (g^3 looks plausible while
+          // staying readable; full g^4 is too aggressive on screen).
+          float gBoost = pow(clamp(g, 0.25, 1.9), 3.0);
+          float brightness = mix(1.0, gBoost, uDopplerGain);
 
-          float contribution = (line + fill) * emis * brightness;
+          float contribution = (line + fill) * emis * brightness *
+                               uDiskBrightness;
 
-          // Pure white lines (near-neutral). A hair of warm tint vs cool
-          // to suggest the Doppler direction without being colourful.
-          vec3 lineColor = mix(vec3(0.95, 0.88, 0.80),
-                               vec3(0.92, 0.95, 1.05),
-                               smoothstep(0.9, 1.3, g));
-          vec3 contribColor = lineColor;
+          // ---- Colour assembly
+          // 1) Doppler tint: approaching side cooler/blue, receding warmer.
+          vec3 cool = vec3(0.78, 0.92, 1.18);
+          vec3 warm = vec3(1.18, 0.92, 0.66);
+          vec3 dopplerTint = mix(warm, cool, smoothstep(0.55, 1.45, g));
+          // 2) Gravitational redshift: inner rings (small grav) → warmer
+          vec3 gravTint = mix(vec3(1.20, 0.78, 0.55),
+                              vec3(1.0, 1.0, 1.0),
+                              smoothstep(0.45, 0.85, grav));
+          // 3) Combine: multiplicative, both kept deliberate but gentle.
+          vec3 contribColor = dopplerTint * gravTint;
 
           if (!hitPrimary) {
-            diskIntensity += contribution * 2.4;
-            diskColor     += contribColor * contribution * 2.4;
+            // Primary image — the upper, dominant arc.
+            float w = 95.0;
+            diskIntensity += contribution * w;
+            diskColor     += contribColor * contribution * w;
             hitPrimary = true;
           } else if (!hitSecondary) {
-            // Ghost image — much fainter thin band.
-            diskIntensity += contribution * 0.55;
-            diskColor     += contribColor * contribution * 0.55;
+            // Ghost / secondary image — thin, dimmer band beneath shadow.
+            float w = 28.0;
+            diskIntensity += contribution * w;
+            diskColor     += contribColor * contribution * w;
             hitSecondary = true;
           }
         }
@@ -238,26 +256,27 @@ export const luminetQuadFragmentShader = /* glsl */ `
       alpha = 1.0;
     }
 
-    // 2. Photon ring: very thin line at b ≈ b_crit.
-    //    Visible just outside the shadow — feathered ~0.25 in M-units.
-    float rimSigma = 0.35;                 // width in M-units
-    float rim = exp(-pow((b - bCrit) / rimSigma, 2.0));
-    // only show outside the shadow
-    rim *= step(bCrit, b);
-    if (rim > 0.005) {
-      vec3 rimColor = vec3(0.95, 0.92, 0.88);
-      rgb += rimColor * rim * 0.55;
-      alpha = max(alpha, rim * 0.65);
+    // 2. Photon ring — thin, crisp, the main visual accent of the BH.
+    //    A narrow gaussian at b = b_crit, plus an even narrower bright
+    //    core that gives a distinct 1–1.5 px line.
+    float rimSigma = 0.18;                       // width in M-units
+    float rim     = exp(-pow((b - bCrit) / rimSigma, 2.0));
+    float rimCore = exp(-pow((b - bCrit) / 0.06, 2.0));
+    rim     *= step(bCrit - 0.02, b);            // outside shadow only
+    rimCore *= step(bCrit - 0.02, b);
+    if (rim + rimCore > 0.005) {
+      vec3 rimColor = vec3(1.00, 0.95, 0.86);    // soft warm-white
+      rgb   += rimColor * (rim * 0.85 + rimCore * 1.30);
+      alpha  = max(alpha, clamp(rim * 0.85 + rimCore * 0.75, 0.0, 1.0));
     }
 
     // 3. Disk isoradials (primary + ghost).
     if (diskIntensity > 0.0) {
-      // Tonemap gently to keep things visually pleasant.
-      vec3 diskRGB = diskColor / (1.0 + diskIntensity * 0.4);
-      // Saturate brightness so thin lines stand out clearly.
-      float a = clamp(diskIntensity * 0.85, 0.0, 1.0);
-      // additive over whatever we already painted (rim / shadow)
-      rgb = rgb + diskRGB;
+      // Soft Reinhard-style rolloff so highlights don't blow out but the
+      // disk stays clearly readable on the black background.
+      vec3  diskRGB = diskColor / (1.0 + diskIntensity * 0.18);
+      float a       = clamp(diskIntensity * 0.55, 0.10, 1.0);
+      rgb   = rgb + diskRGB;
       alpha = max(alpha, a);
     }
 
