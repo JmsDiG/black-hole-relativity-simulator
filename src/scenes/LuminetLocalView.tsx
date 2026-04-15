@@ -172,8 +172,23 @@ function LensedStars() {
 /**
  * <BlackHoleQuad /> — full-screen NDC quad with the minimalist BH shader.
  */
+/**
+ * Fullscreen-triangle geometry — a single oversized triangle covering NDC
+ * [-1..1] on both axes (with corners at (-1,-1), (3,-1), (-1,3)). Avoids
+ * the precision/ordering quirks of the diagonal seam in a two-triangle
+ * planeGeometry quad, which can sometimes leave a visible triangular gap.
+ */
+function buildFullscreenTriangleGeometry() {
+  const geo = new BufferGeometry()
+  const positions = new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0])
+  geo.setAttribute('position', new BufferAttribute(positions, 3))
+  // no indices needed; 3 vertices form the one triangle
+  return geo
+}
+
 function BlackHoleQuad({ visual }: { visual: LuminetVisualParams }) {
   const matRef = useRef<ShaderMaterial>(null)
+  const geometry = useMemo(buildFullscreenTriangleGeometry, [])
 
   const uniforms = useMemo(
     () => ({
@@ -185,6 +200,7 @@ function BlackHoleQuad({ visual }: { visual: LuminetVisualParams }) {
       uTime: { value: 0 },
       uDopplerGain: { value: 0.85 },
       uDiskBrightness: { value: visual.diskBrightness },
+      uCamDistanceRs: { value: 22 },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
@@ -198,6 +214,7 @@ function BlackHoleQuad({ visual }: { visual: LuminetVisualParams }) {
     m.uniforms.uInvViewProj.value.copy(tmpInvVP)
     m.uniforms.uCamPos.value.copy(camera.position)
     m.uniforms.uTime.value = clock.elapsedTime
+    m.uniforms.uCamDistanceRs.value = camera.position.length()
     // live-update visual params so preset switches re-render immediately
     m.uniforms.uDiskOuter.value = visual.diskOuterRs
     m.uniforms.uDiskBrightness.value = visual.diskBrightness
@@ -205,8 +222,7 @@ function BlackHoleQuad({ visual }: { visual: LuminetVisualParams }) {
   })
 
   return (
-    <mesh frustumCulled={false} renderOrder={10}>
-      <planeGeometry args={[2, 2]} />
+    <mesh args={[geometry]} frustumCulled={false} renderOrder={10}>
       <shaderMaterial
         ref={matRef}
         depthTest={false}

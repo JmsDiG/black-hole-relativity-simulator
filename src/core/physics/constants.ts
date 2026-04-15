@@ -18,7 +18,10 @@ export const DEFAULT_MASS_SOLAR = 8
 export const DEFAULT_SIMULATION_SPEED = 100
 
 export const DEFAULT_OBSERVER = {
-  radiusRs: 8,
+  // Default distance bumped from 8 → 22 Rs so the initial Luminet view
+  // is a calm "overview" shot with the BH clearly framed, instead of the
+  // previous close-in setup. The radius slider range is unchanged.
+  radiusRs: 22,
   radialVelocity: 0,
   // Reduced from 0.24 → 0.04 c to slow the visible orbital motion of
   // the Local Observer camera. Same UI slider, just a calmer initial

@@ -36,9 +36,9 @@ export const OBSERVED_BLACK_HOLES: ObservedBlackHoleModel[] = [
       'GRAVITY Collaboration (2022): geometric and orbital constraints give a mass of about 4.154 million solar masses.',
     sourceUrl: 'https://arxiv.org/abs/2112.07478',
     // Sgr A*: EHT-inferred inclination ~30°, low accretion rate.
-    inclinationDeg: 30,
+    inclinationDeg: 32,
     diskOuterRs: 9,
-    diskBrightness: 0.55,
+    diskBrightness: 0.45,
   },
   {
     id: 'm87-star',
@@ -52,8 +52,8 @@ export const OBSERVED_BLACK_HOLES: ObservedBlackHoleModel[] = [
     sourceUrl: 'https://arxiv.org/abs/1906.11243',
     // M87*: jet axis tilted ~17° from line of sight → near face-on view.
     inclinationDeg: 17,
-    diskOuterRs: 13,
-    diskBrightness: 1.4,
+    diskOuterRs: 12,
+    diskBrightness: 0.95,
   },
   {
     id: 'cygnus-x1',
@@ -68,7 +68,7 @@ export const OBSERVED_BLACK_HOLES: ObservedBlackHoleModel[] = [
     // Cygnus X-1: orbital inclination ≈ 27°, very bright X-ray accretion.
     inclinationDeg: 27,
     diskOuterRs: 8,
-    diskBrightness: 1.7,
+    diskBrightness: 1.15,
   },
   {
     id: 'gw150914-remnant',
@@ -81,8 +81,8 @@ export const OBSERVED_BLACK_HOLES: ObservedBlackHoleModel[] = [
       'Abbott et al. (2016), “Properties of the Binary Black Hole Merger GW150914”: remnant mass about 62 solar masses.',
     sourceUrl: 'https://authors.library.caltech.edu/records/mt5ym-r8015',
     // No bound disk (vacuum BH); render as edge-on with very faint disk.
-    inclinationDeg: 82,
+    inclinationDeg: 78,
     diskOuterRs: 7,
-    diskBrightness: 0.2,
+    diskBrightness: 0.25,
   },
 ]

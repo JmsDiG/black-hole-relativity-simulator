@@ -107,20 +107,26 @@ export const nebulaFragmentShader = /* glsl */ `
     vec3 d = normalize(vDir);
 
     // Two slightly offset noise samples — coarse cloud body + finer wisps.
-    float lo = fbm(d * 1.6);                // 0..1, smooth blobs
-    float hi = fbm(d * 4.3 + vec3(7.1));    // higher freq detail
-    // soft mask so noise is mostly off, only the brightest 30% shows.
-    float mask = smoothstep(0.50, 0.85, lo);
-    float fine = smoothstep(0.55, 0.90, hi) * 0.4;
-    float n    = mask + fine * mask;
+    float lo = fbm(d * 1.5);                // 0..1, smooth blobs
+    float mi = fbm(d * 2.7 + vec3(3.2));    // medium scale
+    float hi = fbm(d * 5.1 + vec3(7.1));    // higher freq detail
+    // Broader mask — shows ~55% of the sky rather than just the peaks,
+    // so the haze is genuinely noticeable (not hiding at 5% alpha).
+    float mask = smoothstep(0.38, 0.82, lo);
+    float wisp = smoothstep(0.50, 0.88, mi) * 0.55;
+    float fine = smoothstep(0.55, 0.92, hi) * 0.30;
+    float n    = mask + wisp * mask + fine * mask;
 
-    // Cool blue-violet body, faint warm pockets where lo is brightest.
-    vec3 cool = vec3(0.05, 0.07, 0.13);
-    vec3 warm = vec3(0.10, 0.06, 0.04);
-    vec3 col  = mix(cool, warm, smoothstep(0.75, 0.95, lo));
+    // Deep blue-violet body + warm ember pockets where lo is brightest.
+    vec3 cool = vec3(0.09, 0.13, 0.24);
+    vec3 warm = vec3(0.22, 0.11, 0.08);
+    vec3 glow = vec3(0.16, 0.08, 0.22);     // faint magenta core
+    vec3 col  = mix(cool, glow, smoothstep(0.55, 0.85, mi));
+    col       = mix(col, warm, smoothstep(0.78, 0.96, lo));
 
-    // Very low overall amplitude — must NOT compete with stars or disk.
-    gl_FragColor = vec4(col * n * 0.55, 1.0);
+    // Lifted overall amplitude — nebulae now clearly visible but still
+    // dimmer than any star point (peak col * n ~ 0.35, stars ~1.0).
+    gl_FragColor = vec4(col * n * 1.35, 1.0);
   }
 `
 
@@ -153,6 +159,7 @@ export const luminetQuadFragmentShader = /* glsl */ `
   uniform float uTime;
   uniform float uDopplerGain;     // 0..1 how strong Doppler asymmetry shows
   uniform float uDiskBrightness;  // overall disk emissivity multiplier (0.2..2.0)
+  uniform float uCamDistanceRs;   // |observer| in Rs — dims disk when close
 
   const float PI    = 3.14159265359;
   const float SQRT3 = 1.73205080757;
@@ -284,10 +291,18 @@ export const luminetQuadFragmentShader = /* glsl */ `
           // peak of the profile lives at r ≈ 9/4 · r_in; rescale to ~1 there
           float emis = max(0.0, emisRaw) * 4.5;
 
-          // Brightness: physical Doppler boost (g^3 looks plausible while
-          // staying readable; full g^4 is too aggressive on screen).
-          float gBoost = pow(clamp(g, 0.25, 1.9), 3.0);
+          // Brightness: physical Doppler boost. g^2 (softer than g^3/g^4)
+          // keeps the approach/recede contrast readable without burn-out.
+          float gBoost = pow(clamp(g, 0.3, 1.7), 2.0);
           float brightness = mix(1.0, gBoost, uDopplerGain);
+
+          // ---- Proximity attenuation ----
+          // When the observer is close to the BH, the disk subtends a
+          // large solid angle and otherwise reads as overexposed. Fade
+          // brightness smoothly from 25 % at r ≤ 3 Rs up to 100 % at
+          // r ≥ 18 Rs.
+          float proxAtten = smoothstep(3.0, 18.0, uCamDistanceRs);
+          brightness *= mix(0.25, 1.0, proxAtten);
 
           float contribution = (line + fill) * emis * brightness *
                                uDiskBrightness;
@@ -305,15 +320,15 @@ export const luminetQuadFragmentShader = /* glsl */ `
           vec3 contribColor = dopplerTint * gravTint;
 
           if (!hitPrimary) {
-            // Primary image — the upper, dominant arc. Softened to keep
-            // the disk realistic / not over-saturated.
-            float w = 26.0;
+            // Primary image — the upper, dominant arc. Softened further
+            // so the disk reads as hazy gas, not a glowing blade.
+            float w = 13.0;
             diskIntensity += contribution * w;
             diskColor     += contribColor * contribution * w;
             hitPrimary = true;
           } else if (!hitSecondary) {
-            // Ghost / secondary image — thin, dimmer band beneath shadow.
-            float w = 7.0;
+            // Ghost / secondary image — even fainter thin band.
+            float w = 3.2;
             diskIntensity += contribution * w;
             diskColor     += contribColor * contribution * w;
             hitSecondary = true;
@@ -351,11 +366,12 @@ export const luminetQuadFragmentShader = /* glsl */ `
 
     // 3. Disk isoradials (primary + ghost).
     if (diskIntensity > 0.0) {
-      // Stronger Reinhard rolloff so the disk plateaus to a soft, hazy
-      // glow rather than burning out as solid white. No alpha floor —
-      // very faint regions are allowed to fade to fully transparent.
-      vec3  diskRGB = diskColor / (1.0 + diskIntensity * 0.55);
-      float a       = clamp(diskIntensity * 0.30, 0.0, 0.85);
+      // Strong Reinhard rolloff → disk plateaus to a hazy, foggy glow
+      // rather than burning out as solid white. Alpha is kept modest
+      // (<0.65) so a hint of the background bleeds through — this gives
+      // the disk its atmospheric, realistic "gas cloud" feel.
+      vec3  diskRGB = diskColor / (1.0 + diskIntensity * 1.1);
+      float a       = clamp(diskIntensity * 0.18, 0.0, 0.65);
       rgb   = rgb + diskRGB;
       alpha = max(alpha, a);
     }
