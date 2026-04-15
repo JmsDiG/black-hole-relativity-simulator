@@ -106,27 +106,25 @@ export const nebulaFragmentShader = /* glsl */ `
   void main() {
     vec3 d = normalize(vDir);
 
-    // Two slightly offset noise samples — coarse cloud body + finer wisps.
-    float lo = fbm(d * 1.5);                // 0..1, smooth blobs
-    float mi = fbm(d * 2.7 + vec3(3.2));    // medium scale
-    float hi = fbm(d * 5.1 + vec3(7.1));    // higher freq detail
-    // Broader mask — shows ~55% of the sky rather than just the peaks,
-    // so the haze is genuinely noticeable (not hiding at 5% alpha).
-    float mask = smoothstep(0.38, 0.82, lo);
-    float wisp = smoothstep(0.50, 0.88, mi) * 0.55;
-    float fine = smoothstep(0.55, 0.92, hi) * 0.30;
-    float n    = mask + wisp * mask + fine * mask;
+    // Monochrome blue-gray haze — feels like a real wide-field astro
+    // photo rather than a stylised nebula. Two octaves is enough: a
+    // coarse cloud body + a subtler wisp layer.
+    float lo = fbm(d * 1.5);
+    float mi = fbm(d * 2.9 + vec3(3.2));
+    float mask = smoothstep(0.42, 0.86, lo);
+    float wisp = smoothstep(0.55, 0.90, mi) * 0.35;
+    float n    = mask + wisp * mask;
 
-    // Deep blue-violet body + warm ember pockets where lo is brightest.
-    vec3 cool = vec3(0.09, 0.13, 0.24);
-    vec3 warm = vec3(0.22, 0.11, 0.08);
-    vec3 glow = vec3(0.16, 0.08, 0.22);     // faint magenta core
-    vec3 col  = mix(cool, glow, smoothstep(0.55, 0.85, mi));
-    col       = mix(col, warm, smoothstep(0.78, 0.96, lo));
+    // Single near-monochrome palette: cool steel-blue with a very slight
+    // warm bias in the brightest cloud cores. No magenta / violet / warm
+    // highlights — keeps the sky calm and realistic.
+    vec3 cool = vec3(0.08, 0.11, 0.18);
+    vec3 hint = vec3(0.14, 0.13, 0.15);
+    vec3 col  = mix(cool, hint, smoothstep(0.72, 0.96, lo));
 
-    // Lifted overall amplitude — nebulae now clearly visible but still
-    // dimmer than any star point (peak col * n ~ 0.35, stars ~1.0).
-    gl_FragColor = vec4(col * n * 1.35, 1.0);
+    // Moderate amplitude — clearly visible but the sky reads as mostly
+    // dark with hints of cloud, not as a stylised background panel.
+    gl_FragColor = vec4(col * n * 0.80, 1.0);
   }
 `
 
@@ -254,23 +252,19 @@ export const luminetQuadFragmentShader = /* glsl */ `
           vec3  Ph = (ch * e1 + sh * e2) * rHitM;
           float diskPhi = atan(Ph.z, Ph.x);
 
-          // ---- Soft isoradial contours (gentle, "fogged" look)
-          // The sharp core is now small and dim; most of the disk light
-          // comes from a wide soft halo around each contour, so the disk
-          // reads as diffused / scattered rather than crisp lines.
-          float spacing  = 1.10;                       // ring spacing in Rs
-          float phase    = rHitRs / spacing;
-          float offset   = abs(fract(phase) - 0.5);
-          float lineCore = smoothstep(0.05, 0.005, offset) * 0.45;
-          float lineHalo = smoothstep(0.45, 0.05,  offset) * 0.55;
-          float line     = lineCore + lineHalo;
-
-          // Diffuse "atmospheric" disk-surface wash so the disk reads as a
-          // continuous body of gas, not stacked rings. Stronger than before
-          // and decaying smoothly to the outer edge.
-          float radialFalloff = 1.0 - smoothstep(uDiskInner * 1.05,
+          // ---- Smooth physical emission (no discrete rings)
+          // Realistic accretion disks in photos / high-fidelity renders
+          // show a continuous gradient, not stacked contour lines. We
+          // keep a very subtle radial ripple (±7 %) as a cue that there
+          // IS radial structure, but the dominant signal is the smooth
+          // Page–Thorne radial profile.
+          float radialFalloff = 1.0 - smoothstep(uDiskInner * 1.02,
                                                  uDiskOuter, rHitRs);
-          float fill = 0.55 * radialFalloff;
+          float innerRamp     = smoothstep(uDiskInner,
+                                           uDiskInner * 1.12, rHitRs);
+          float body          = innerRamp * radialFalloff;
+          float ripple        = 1.0 + 0.07 * cos(rHitRs * 3.8);
+          float smoothField   = body * ripple;
 
           // ---- Relativistic g-factor (Doppler + gravitational redshift)
           float Omega   = pow(rHitM, -1.5);               // Keplerian
@@ -283,13 +277,11 @@ export const luminetQuadFragmentShader = /* glsl */ `
           float grav    = sqrt(max(0.0, 1.0 - 2.0 / rHitM));
           float g       = doppler * grav;                  // composite
 
-          // ---- Page–Thorne style emissivity profile, normalised so the
-          // peak is O(1) (independent of overall flux level — that's
-          // controlled by uDiskBrightness).
+          // ---- Page–Thorne style emissivity (physical radial profile),
+          // normalised so the peak is O(1).
           float emisRaw = (1.0 - sqrt(uDiskInner / max(rHitRs, uDiskInner))) *
                           pow(uDiskInner / rHitRs, 2.0);
-          // peak of the profile lives at r ≈ 9/4 · r_in; rescale to ~1 there
-          float emis = max(0.0, emisRaw) * 4.5;
+          float emis    = max(0.0, emisRaw) * 4.5 * smoothField;
 
           // Brightness: physical Doppler boost. g^2 (softer than g^3/g^4)
           // keeps the approach/recede contrast readable without burn-out.
@@ -304,31 +296,36 @@ export const luminetQuadFragmentShader = /* glsl */ `
           float proxAtten = smoothstep(3.0, 18.0, uCamDistanceRs);
           brightness *= mix(0.25, 1.0, proxAtten);
 
-          float contribution = (line + fill) * emis * brightness *
-                               uDiskBrightness;
+          float contribution = emis * brightness * uDiskBrightness;
 
-          // ---- Colour assembly
-          // 1) Doppler tint: approaching side cooler/blue, receding warmer.
-          vec3 cool = vec3(0.78, 0.92, 1.18);
-          vec3 warm = vec3(1.18, 0.92, 0.66);
-          vec3 dopplerTint = mix(warm, cool, smoothstep(0.55, 1.45, g));
-          // 2) Gravitational redshift: inner rings (small grav) → warmer
-          vec3 gravTint = mix(vec3(1.20, 0.78, 0.55),
-                              vec3(1.0, 1.0, 1.0),
-                              smoothstep(0.45, 0.85, grav));
-          // 3) Combine: multiplicative, both kept deliberate but gentle.
-          vec3 contribColor = dopplerTint * gravTint;
+          // ---- Colour assembly (desaturated, photo-realistic palette)
+          // Base: warm-white body that cools very slightly with radius —
+          // the look of a real astrophysical accretion disk.
+          vec3 baseWarm = vec3(1.08, 0.92, 0.72);
+          vec3 baseCool = vec3(0.98, 0.96, 0.92);
+          float radialT = smoothstep(uDiskInner, uDiskOuter, rHitRs);
+          vec3 basePal  = mix(baseWarm, baseCool, radialT);
+
+          // Subtle Doppler tint (±5 %). Approach side a touch cooler,
+          // recede a touch warmer. No dramatic blue/red splash.
+          vec3 dopApproach = vec3(0.95, 0.99, 1.05);
+          vec3 dopRecede   = vec3(1.05, 0.99, 0.93);
+          vec3 dopTint     = mix(dopRecede, dopApproach,
+                                 smoothstep(0.65, 1.35, g));
+
+          vec3 contribColor = basePal * dopTint;
 
           if (!hitPrimary) {
-            // Primary image — the upper, dominant arc. Softened further
-            // so the disk reads as hazy gas, not a glowing blade.
-            float w = 13.0;
+            // Primary image — the main disk arc.
+            float w = 4.8;
             diskIntensity += contribution * w;
             diskColor     += contribColor * contribution * w;
             hitPrimary = true;
           } else if (!hitSecondary) {
-            // Ghost / secondary image — even fainter thin band.
-            float w = 3.2;
+            // Ghost / secondary image — the thin band bent under the
+            // shadow (the signature Luminet feature), kept noticeably
+            // dimmer than the primary.
+            float w = 1.2;
             diskIntensity += contribution * w;
             diskColor     += contribColor * contribution * w;
             hitSecondary = true;
@@ -341,42 +338,45 @@ export const luminetQuadFragmentShader = /* glsl */ `
       phi   = phiNext;
     }
 
-    // ---- Assemble output ----
-    vec3 rgb = vec3(0.0);
-    float alpha = 0.0;
+    // ---- Assemble output (premultiplied-alpha semantics).
+    // The material uses blend factors (ONE, ONE_MINUS_SRC_ALPHA), so the
+    // final composite is:
+    //   final = fragColor.rgb * 1 + dst.rgb * (1 - fragColor.a)
+    // i.e. fragColor.rgb is EMISSIVE light that is simply ADDED to the
+    // background, while fragColor.a is the amount by which the
+    // background is dimmed. For emission-only elements (ring, disk)
+    // we keep a = 0 so the nebula / stars behind are preserved, which
+    // eliminates the dark halo artefact that normal SRC_ALPHA blending
+    // was producing around the BH.
+    vec3  emission = vec3(0.0);
+    float blockout = 0.0;
 
-    // 1. Shadow: rays captured by the BH — opaque BLACK (covers stars).
-    if (captured) {
-      rgb = vec3(0.0);
-      alpha = 1.0;
-    }
-
-    // 2. Photon ring — thin and visible, but not blinding.
-    //    Narrow gaussian envelope plus a slim bright core for crispness.
-    float rimSigma = 0.20;                       // width in M-units
+    // 1. Photon ring — emission only, no background dimming.
+    float rimSigma = 0.22;                       // width in M-units
     float rim     = exp(-pow((b - bCrit) / rimSigma, 2.0));
     float rimCore = exp(-pow((b - bCrit) / 0.07, 2.0));
-    rim     *= step(bCrit - 0.02, b);            // outside shadow only
+    rim     *= step(bCrit - 0.02, b);
     rimCore *= step(bCrit - 0.02, b);
-    if (rim + rimCore > 0.004) {
-      vec3 rimColor = vec3(1.00, 0.95, 0.86);    // soft warm-white
-      rgb   += rimColor * (rim * 0.55 + rimCore * 0.90);
-      alpha  = max(alpha, clamp(rim * 0.55 + rimCore * 0.55, 0.0, 1.0));
-    }
+    vec3 rimColor = vec3(1.00, 0.94, 0.82);      // soft warm-white
+    emission += rimColor * (rim * 0.45 + rimCore * 0.80);
 
-    // 3. Disk isoradials (primary + ghost).
+    // 2. Disk (primary + ghost). Emission only.
     if (diskIntensity > 0.0) {
-      // Strong Reinhard rolloff → disk plateaus to a hazy, foggy glow
-      // rather than burning out as solid white. Alpha is kept modest
-      // (<0.65) so a hint of the background bleeds through — this gives
-      // the disk its atmospheric, realistic "gas cloud" feel.
-      vec3  diskRGB = diskColor / (1.0 + diskIntensity * 1.1);
-      float a       = clamp(diskIntensity * 0.18, 0.0, 0.65);
-      rgb   = rgb + diskRGB;
-      alpha = max(alpha, a);
+      // Gentle Reinhard rolloff so highlights never clip to pure white.
+      vec3 diskRGB = diskColor / (1.0 + diskIntensity * 0.85);
+      emission += diskRGB;
     }
 
-    if (alpha <= 0.001) discard;
-    gl_FragColor = vec4(rgb, alpha);
+    // 3. Shadow: the ONLY element that dims the background. This is
+    //    what makes the BH actually look like a hole in the sky.
+    if (captured) {
+      emission = vec3(0.0);
+      blockout = 1.0;
+    }
+
+    // Emission pixels alone don't need a writer; skip truly empty ones.
+    if (!captured && emission.r + emission.g + emission.b < 0.002) discard;
+
+    gl_FragColor = vec4(emission, blockout);
   }
 `

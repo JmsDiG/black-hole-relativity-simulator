@@ -22,9 +22,12 @@ import {
   BackSide,
   BufferAttribute,
   BufferGeometry,
+  CustomBlending,
   Group,
   Matrix4,
   NormalBlending,
+  OneFactor,
+  OneMinusSrcAlphaFactor,
   Points,
   ShaderMaterial,
   Vector3,
@@ -198,7 +201,7 @@ function BlackHoleQuad({ visual }: { visual: LuminetVisualParams }) {
       uDiskInner: { value: ISCO_RS },
       uDiskOuter: { value: visual.diskOuterRs },
       uTime: { value: 0 },
-      uDopplerGain: { value: 0.85 },
+      uDopplerGain: { value: 0.55 },
       uDiskBrightness: { value: visual.diskBrightness },
       uCamDistanceRs: { value: 22 },
     }),
@@ -225,6 +228,9 @@ function BlackHoleQuad({ visual }: { visual: LuminetVisualParams }) {
     <mesh args={[geometry]} frustumCulled={false} renderOrder={10}>
       <shaderMaterial
         ref={matRef}
+        blendDst={OneMinusSrcAlphaFactor}
+        blendSrc={OneFactor}
+        blending={CustomBlending}
         depthTest={false}
         depthWrite={false}
         fragmentShader={luminetQuadFragmentShader}
