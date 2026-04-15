@@ -1,5 +1,4 @@
 import { defineConfig } from 'vite'
-import { resolve } from 'node:path'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
@@ -7,10 +6,6 @@ export default defineConfig({
   build: {
     chunkSizeWarningLimit: 1400,
     rollupOptions: {
-      input: {
-        main: resolve(__dirname, 'index.html'),
-        luminet: resolve(__dirname, 'luminet.html'),
-      },
       output: {
         manualChunks: {
           react: ['react', 'react-dom'],

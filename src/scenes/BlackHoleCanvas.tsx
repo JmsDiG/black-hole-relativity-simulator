@@ -1,11 +1,17 @@
 import { Canvas } from '@react-three/fiber'
 import { BlackHoleView } from './BlackHoleView'
+import { LuminetLocalView } from './LuminetLocalView'
 
 interface BlackHoleCanvasProps {
   view: 'local' | 'distant'
   onCanvasReady?: (canvas: HTMLCanvasElement | null) => void
 }
 
+/**
+ * The local view uses the new Luminet-style renderer (see LuminetLocalView).
+ * The distant view keeps the original BlackHoleView — untouched from main,
+ * so every other panel / window in the app behaves exactly as before.
+ */
 export function BlackHoleCanvas({
   view,
   onCanvasReady,
@@ -21,7 +27,7 @@ export function BlackHoleCanvas({
         }
       }}
     >
-      <BlackHoleView view={view} />
+      {view === 'local' ? <LuminetLocalView /> : <BlackHoleView view={view} />}
     </Canvas>
   )
 }
