@@ -1,184 +1,165 @@
-# BH Simulation
+# Black Hole Relativity Simulator
 
-An interactive browser-based black hole simulator designed for local development in VS Code and static deployment to GitHub Pages.
+Browser-based interactive simulator for exploring how a nearby black hole affects what an observer sees and how time passes locally versus at infinity.
 
-The app places the user in a first-person relativistic environment near a black hole and lets them explore:
+This project is built as an educational visualization, not as a full general-relativistic ray tracer. The goal is to make the main effects readable in real time in a browser: lensing, redshift and blueshift, orbital motion, and the separation between gravitational and kinematic time dilation.
 
-- gravitational lensing;
-- redshift and blueshift;
-- radial and tangential velocity effects;
-- proper time versus distant observer time;
-- the separate roles of gravitational and kinematic time dilation.
+## What the project does
 
-This is an honest educational MVP+: analytic clock-rate factors are computed from a clear physical model, while the visual side uses shader-based parametric approximations so the simulation remains interactive in a browser.
+The simulator places the user near a black hole and lets them change the observer state directly:
 
-## Stack
+- radius from the hole in Schwarzschild radii;
+- radial and tangential velocity;
+- camera direction and field of view;
+- simulation speed;
+- motion mode and visual approximation mode.
 
-- Vite 5
-- React 19
-- TypeScript
-- Three.js via `@react-three/fiber`
-- Zustand
-- KaTeX via `react-katex` for rendered formulas
+The app then combines a lightweight physical model with real-time rendering to show:
 
-## Implemented features
+- qualitative gravitational lensing of the star field;
+- redshift and blueshift trends in the sky and accretion disk;
+- accumulated proper time versus distant observer time;
+- scenario presets for common teaching cases;
+- side-by-side comparison and study overlays.
 
-### Main scene
+## What is implemented
 
-- first-person camera near a black hole;
-- event horizon;
-- photon sphere;
-- accretion disk;
+### Visual scene
+
+- black hole core and event-horizon region;
+- photon-sphere-inspired visual structure;
+- accretion disk with color and brightness asymmetry;
 - procedural star background;
-- shader-based strong-lensing approximation;
-- redshift / blueshift colour response for stars and disk;
-- observer trajectory trail.
+- observer trail and camera controls.
 
-### Modes
+### Interaction and study tools
 
-- `Free exploration`
-- `Scenarios`
-- `Compare observers`
-- `Study mode`
-
-### UI and learning tools
-
-- explicit viewport / control-deck layout on desktop;
-- hover tooltips with explanations and examples for controls;
+- four modes: `Free exploration`, `Scenarios`, `Compare observers`, `Study mode`;
+- live control deck for observer parameters;
 - formula panel with rendered equations;
-- live scientific dashboard for clocks and scales;
-- glossary cards with official scientific terminology;
-- worldline / trajectory plots;
-- light-signal probe;
+- glossary and hint panels;
+- worldline / timeline views;
+- light-signal probe for estimated signal reception at infinity;
 - screenshot export;
-- JSON trajectory recording;
-- shareable URL export;
-- pause / resume / reset;
-- cinematic mode;
-- capture-cone overlay;
-- observed black hole mass presets tied to scientific papers.
+- JSON recording export;
+- shareable URL state export.
 
-## Observed black hole presets
+### Data presets
 
-The app includes several paper-backed mass presets:
+The app includes several observed black hole mass presets:
 
 - Sagittarius A*
 - M87*
 - Cygnus X-1
 - GW150914 remnant
 
-These presets are used as physically motivated mass models and are linked to well-known publications in the UI.
+These presets rescale the physical size and characteristic time unit of the simulation.
 
 ## Physical model
 
-### Analytic pieces
+The app uses Schwarzschild-scaled units and exposes the main ingredients directly in the UI:
 
-The simulator uses Schwarzschild-scaled units:
+- Schwarzschild radius: `R_s = 2GM / c^2`
+- static gravitational factor: `sqrt(1 - R_s / r)`
+- Lorentz factor: `gamma = 1 / sqrt(1 - beta^2)`
+- combined time-rate estimate: `dτ / dt_inf ≈ sqrt(1 - R_s / r) / gamma`
 
-- `R_s = 2GM / c^2`
-- local gravitational factor for a static observer:
-  `sqrt(1 - R_s / r)`
-- Lorentz factor:
-  `gamma = 1 / sqrt(1 - beta^2)`
-- combined clock-rate approximation:
-  `dτ / dt_inf ≈ sqrt(1 - R_s / r) / gamma`
-
-The UI exposes:
+This makes it possible to inspect, separately:
 
 - gravitational contribution;
 - kinematic contribution;
-- total slowdown factor;
-- accumulated proper-time versus distant-time difference.
+- total clock slowdown;
+- accumulated proper-time difference.
 
-The black hole mass rescales the physical size `R_s` and the physical time unit `R_s / c`.
+## What this project is not
 
-### Approximations
+This repository does not claim to be a high-accuracy GR solver.
 
-The project **does not** implement full geodesic ray tracing in Schwarzschild or Kerr spacetime.
+It does not currently implement:
 
-Instead, it uses clearly labeled approximations:
+- full null-geodesic ray tracing;
+- Kerr spacetime integration;
+- exact radiative transfer for the disk;
+- exact geodesic motion of the observer;
+- physically rigorous signal propagation.
 
-- background lensing: parametric ray bending driven by impact parameter;
-- shadow size and glow: anchored to the photon sphere, not exact null-geodesic integration;
-- accretion disk: shader model with brightness and colour asymmetry;
-- observer motion: user-driven kinematics, not an exact geodesic integrator;
-- `Rotating approximation`: qualitative frame-dragging-like asymmetry, not a Kerr solver.
+Instead, it uses explicit approximations that are fast enough for interactive use in a browser. The intent is educational clarity first, not research-grade numerical fidelity.
 
-When `Educational approximation` is enabled, the visual model is intentionally smoothed further to keep trends easy to read.
+## Tech stack
+
+- Vite
+- React
+- TypeScript
+- Three.js via `@react-three/fiber`
+- Zustand
+- KaTeX via `react-katex`
 
 ## Project structure
 
 ```text
 src/
-  components/           UI panels, controls, tooltips and formula views
+  components/           UI panels, controls, hints, glossary, formulas
   core/
-    physics/            constants, formulas, time factors, motion model
-    rendering/          GLSL shaders and rendering helpers
-  presets/              scenario presets
-  scenes/               canvas and 3D scene
-  state/                zustand simulation store
-  ui/                   glossary terms and observed black hole catalog
+    physics/            constants, orbital update logic, relativity helpers
+    rendering/          shader code and rendering utilities
+  presets/              teaching scenarios
+  scenes/               canvas and 3D scene setup
+  state/                Zustand store and simulation state
+  ui/                   black hole catalog and glossary content
   utils/                formatting and share-state helpers
 ```
 
-## Local run
+## Local development
+
+Install dependencies:
 
 ```bash
 npm install
+```
+
+Start the dev server:
+
+```bash
 npm run dev
 ```
 
-Production checks:
+Build for production:
 
 ```bash
 npm run build
+```
+
+Preview the production build locally:
+
+```bash
 npm run preview
 ```
 
-## GitHub Pages
+## Deployment
 
-`vite.config.ts` is already prepared:
+The project is configured for static deployment with GitHub Pages through GitHub Actions.
 
-- `base` comes from `VITE_BASE_PATH`;
-- the default is `./`, which is convenient for static Pages deployment without routing.
+The repository includes:
 
-Workflow file:
+- Vite base-path handling through `VITE_BASE_PATH`;
+- a Pages deployment workflow in `.github/workflows/deploy.yml`.
 
-- `.github/workflows/deploy.yml`
+The current workflow builds the app and deploys the generated `dist` folder.
 
-The workflow:
-
-1. installs dependencies with `npm ci`;
-2. runs `npm run build`;
-3. uploads `dist`;
-4. deploys to GitHub Pages.
-
-If you want an explicit repository base path, build with:
+If you need an explicit base path for a repository deployment, build with:
 
 ```bash
 VITE_BASE_PATH=/your-repo-name/ npm run build
 ```
 
-## Implemented fully
+## Roadmap
 
-- modular Vite/React/TypeScript foundation;
-- local dev / lint / build flow;
-- first-person black hole scene;
-- scenario presets and observer-comparison mode;
-- live clock comparison;
-- study hints, glossary and formulas;
-- JSON export and share URL;
-- GitHub Pages workflow.
+Reasonable next steps for the project:
 
-## Implemented partially
+1. Add a higher-accuracy mode with numerical ray or geodesic integration.
+2. Improve the accretion disk model beyond the current qualitative shader approach.
+3. Extend comparison tools with richer saved scenarios and better observer-to-observer analysis.
 
-- strong lensing: visually plausible parametric model, not a strict geodesic solver;
-- rotating mode: qualitative approximation, not Kerr;
-- light-signal probe: educational estimate, not full null-geodesic propagation;
-- observer comparison: two synchronized views, not a full multi-frame laboratory relativity environment.
+## License
 
-## Next improvements
-
-1. Add numerical null/geodesic integration for selected rays and a high-accuracy mode.
-2. Upgrade the accretion disk to a more physical emissivity and temperature profile.
-3. Add richer observer laboratories with multiple worldlines and saved JSON scenario bundles.
+No license has been added yet. If you plan to keep the repository public, add one before inviting reuse.
