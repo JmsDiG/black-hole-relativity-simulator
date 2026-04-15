@@ -107,10 +107,16 @@ function NebulaShell() {
     }
   })
 
+  // Sphere radius must stay well inside the camera far clip (240) —
+  // otherwise the forward cap of the sphere (directly ahead of the
+  // camera) is culled and leaves a polygonal hole at screen centre.
+  // 90 is comfortably < 240 and the shader only samples the *direction*
+  // from camera, so the actual radius doesn't affect the noise pattern.
+  // Higher tessellation avoids any visible faceting at silhouette.
   return (
     <group ref={groupRef} renderOrder={-10}>
       <mesh material={material}>
-        <sphereGeometry args={[STAR_DISTANCE * 1.4, 32, 24]} />
+        <sphereGeometry args={[90, 64, 48]} />
       </mesh>
     </group>
   )
